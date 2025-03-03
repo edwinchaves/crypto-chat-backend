@@ -131,4 +131,18 @@ async def get_chat(username: str, friend: str):
     return user_chat
     
 
+# Create an item
+@app.get("/friends/")
+async def get_users_chat(username: str):
+    print(f"Usuarios con chats con {username}")
+
+    friends = set()
+    for message in chat[username]:
+        if message["sender"] != username:
+            friends.add(message["sender"])
+        elif message["receiver"] != username:
+            friends.add(message["receiver"])
+    return list(friends)
+        
+
 

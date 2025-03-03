@@ -69,7 +69,7 @@ class Message(BaseModel):
     sender: str
 
 
-chats = {}
+chat = {}
 users = {}
 public_keys = {}
 
@@ -91,18 +91,21 @@ async def create_user(username: str):
 # Create an item
 @app.post("/message/", response_model=Message)
 async def send_message(data: Message):
-    if data.receiver not in chats:
-        chats[data.receiver] = []
-    if data.sender not in chats:
-        chats[data.sender] = []
-        
+    if data.receiver not in chat:
+        chat[data.receiver] = []
+    if data.sender not in chat:
+        chat[data.sender] = []
+
     if data.receiver not in users or data.sender not in users:
         raise HTTPException(status_code=404, detail="User not found")
 
+    # Encriptar los mensajes
     encrypted_message = encrypt_ECIES(data.message, public_keys[data.receiver])
-    chats[data.receiver].append({"message": encrypted_message, "sender": data.sender, "receiver": data.receiver})
-    
-    chats[data.sender].append({"message": encrypted_message, "sender": data.sender, "receiver": data.receiver})
+
+    # Guardar mensajes en la bd
+
+    chat[data.receiver].append({"message": encrypted_message, "sender": data.sender, "receiver": data.receiver, "encrypted": True})
+    chat[data.sender].append({"message": data.message, "sender": data.sender, "receiver": data.receiver, "encrypted": False})
 
     message_object = Message(message=data.message, receiver=data.receiver, sender=data.sender) 
     return message_object
@@ -111,15 +114,20 @@ async def send_message(data: Message):
 # Create an item
 @app.get("/chat/")
 async def get_chat(username: str, friend: str):
-    print(chats)
-    if username not in chats.keys():
+    print("Mensaje del chat entre ", username, " y ", friend)
+    print(chat[username])
+    
+    if username not in chat:
         return {"message": "No messages"}
     
     user_chat = []
-    for message in chats[username]:
-        if message["receiver"] == username and message["sender"] == friend:
+    for message in chat[username]:
+        if message["sender"] == username:
+            user_chat.append({"mensaje": message["message"], "sender": username})
+
+        elif message["sender"] == friend:
             decrypted_message = decrypt_ECIES(message["message"], users[username].private_key)
-            user_chat.append(decrypted_message)
+            user_chat.append({"mensaje": decrypted_message, "sender": friend})
     return user_chat
     
 

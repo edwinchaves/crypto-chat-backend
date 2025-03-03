@@ -1,4 +1,4 @@
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Body
 from pydantic import BaseModel
 from tinyec import registry
 import secrets
@@ -75,37 +75,36 @@ public_keys = {}
 
 curve = registry.get_curve('secp256r1')
 
-@app.get("/")
-def first_example():
-    return {"GFG Example": "FastAPI"}
 
 @app.post("/user/")
 async def create_user(username: str):
     if username in users:
         return {"message": "User already exists"}
     
-    public_keys[username] = secrets.randbelow(curve.field.n)
-    user = User(username=username, private_key=public_keys[username]*curve.g)
+    
+    user = User(username=username, private_key=secrets.randbelow(curve.field.n))
+    public_keys[username] = user.private_key*curve.g
     users[username] = user
 
     return {"message": "User created"}
 
 # Create an item
 @app.post("/message/", response_model=Message)
-async def send_message(message: str, receiver: str, sender: str):
-    if receiver not in chats:
-        chats[receiver] = []
-
-    if receiver not in users or sender not in users:
+async def send_message(data: Message):
+    if data.receiver not in chats:
+        chats[data.receiver] = []
+    if data.sender not in chats:
+        chats[data.sender] = []
+        
+    if data.receiver not in users or data.sender not in users:
         raise HTTPException(status_code=404, detail="User not found")
 
-    encrypted_message = encrypt_ECIES(message, public_keys[receiver]*curve.g)
-    chats[receiver].append({"message": encrypted_message, "sender": sender, "receiver": receiver})
-    if sender not in chats:
-        chats[sender] = []
-    chats[sender].append({"message": encrypted_message, "sender": sender, "receiver": receiver})
+    encrypted_message = encrypt_ECIES(data.message, public_keys[data.receiver])
+    chats[data.receiver].append({"message": encrypted_message, "sender": data.sender, "receiver": data.receiver})
+    
+    chats[data.sender].append({"message": encrypted_message, "sender": data.sender, "receiver": data.receiver})
 
-    message_object = Message(message=message, receiver=receiver, sender=sender) 
+    message_object = Message(message=data.message, receiver=data.receiver, sender=data.sender) 
     return message_object
     
 
@@ -118,8 +117,9 @@ async def get_chat(username: str, friend: str):
     
     user_chat = []
     for message in chats[username]:
-        if message["sender"] == friend or message["receiver"] == friend:
-            user_chat.append(message)
+        if message["receiver"] == username and message["sender"] == friend:
+            decrypted_message = decrypt_ECIES(message["message"], users[username].private_key)
+            user_chat.append(decrypted_message)
     return user_chat
     
 
